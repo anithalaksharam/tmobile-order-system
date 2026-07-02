@@ -42,7 +42,13 @@
 			<artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
 			<version>2.5.0</version>
 		</dependency>
-	</dependencies>
+        <dependency>
+            <artifactId>shared-common</artifactId>
+            <groupId>com.tmobile</groupId>
+            <version>1.0.0</version>
+            <scope>compile</scope>
+        </dependency>
+    </dependencies>
 
 	<build>
 		<plugins>
