@@ -22,6 +22,7 @@ public class Order {
     private Integer quantity;
 
     private Double totalOrderPrice;
+    private String warehouseLocation;
     private String status; // e.g., "PENDING", "COMPLETED"
     private LocalDateTime orderDate;
 
@@ -50,6 +51,9 @@ public class Order {
 
     public Double getTotalOrderPrice() { return totalOrderPrice; }
     public void setTotalOrderPrice(Double totalOrderPrice) { this.totalOrderPrice = totalOrderPrice; }
+
+    public void setWarehouseLocation(String warehouseLocation) { this.warehouseLocation = warehouseLocation; }
+    public String getWarehouseLocation() { return this.warehouseLocation; }
 
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }

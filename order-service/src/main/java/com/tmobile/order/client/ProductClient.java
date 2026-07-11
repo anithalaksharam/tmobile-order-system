@@ -2,45 +2,33 @@ package com.tmobile.order.client;
 
 import com.tmobile.shared.dto.ProductDetails;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.RestClient;
+import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Mono;
 
 @Component
 public class ProductClient {
 
-    private final RestClient restClient;
+    private final WebClient webClient;
 
-    // Injecting RestClient.Builder via Constructor (Industry Best Practice)
-    public ProductClient(RestClient.Builder builder) {
-        this.restClient = builder
-                .baseUrl("http://localhost:8011/api/v1/products")
-                .build();
+    public ProductClient(WebClient webClient) {
+        this.webClient = webClient;
     }
 
-    // Call 1: Keeps your original lightweight availability check working
-    public boolean checkProductAvailability(String productId) {
-        try {
-            System.out.println("Modern RestClient checking availability for: " + productId);
-            return restClient.get()
-                    .uri("/{id}/availability", productId)
-                    .retrieve()
-                    .body(Boolean.class);
-        } catch (Exception e) {
-            System.err.println("RestClient availability check failed: " + e.getMessage());
-            return false;
-        }
+    // Call 1: Lightweight availability check (Gatekeeper)
+    public Mono<Boolean> checkProductAvailabilityAsync(String productId) {
+        return this.webClient.get()
+                .uri("/{id}/availability", productId)
+                .retrieve()
+                .bodyToMono(Boolean.class)
+                .onErrorReturn(false); // Default to false if downstream service fails
     }
 
-    // Call 2: Hits your rich product details endpoint and returns the shared record DTO!
-    public ProductDetails checkProductDetails(String productId) {
-        try {
-            System.out.println("Modern RestClient fetching details for: " + productId);
-            return restClient.get()
-                    .uri("/{id}/details", productId)
-                    .retrieve()
-                    .body(ProductDetails.class); // Automatically maps JSON to your Shared Record!
-        } catch (Exception e) {
-            System.err.println("RestClient details fetch failed: " + e.getMessage());
-            return new ProductDetails(productId, false, 0.0, "UNKNOWN");
-        }
+    // Call 2: Rich data fetch (Executed only if Call 1 passes)
+    public Mono<ProductDetails> checkProductDetailsAsync(String productId) {
+        return this.webClient.get()
+                .uri("/{id}/details", productId)
+                .retrieve()
+                .bodyToMono(ProductDetails.class)
+                .onErrorReturn(new ProductDetails(productId, false, 0.0, "UNKNOWN_WAREHOUSE"));
     }
 }

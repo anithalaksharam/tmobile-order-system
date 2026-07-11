@@ -1,44 +1,56 @@
 package com.tmobile.order.service;
 
-import com.tmobile.order.client.ProductClient; // <-- Crucial: imports your RestClient wrapper
+import com.tmobile.order.client.ProductClient;
 import com.tmobile.order.model.Order;
 import com.tmobile.order.repository.OrderRepository;
 import org.springframework.stereotype.Service;
-import java.time.LocalDateTime;
-import java.util.List;
+import reactor.core.publisher.Mono;
 
 @Service
 public class OrderService {
 
-    private final OrderRepository orderRepository;
     private final ProductClient productClient;
+    private final OrderRepository orderRepository;
 
-    // Single constructor injecting both dependencies automatically via Spring IoC
-    public OrderService(OrderRepository orderRepository, ProductClient productClient) {
-        this.orderRepository = orderRepository;
+    public OrderService(ProductClient productClient, OrderRepository orderRepository) {
         this.productClient = productClient;
+        this.orderRepository = orderRepository;
     }
 
-    // Keeps your original get method exactly how it was
-    public List<Order> getAllOrders() {
-        return orderRepository.findAll();
-    }
+    public Mono<String> processOrderAsync(String productId, int quantity) {
+        // STEP 1: Run the lightweight availability check first
+        return productClient.checkProductAvailabilityAsync(productId)
+                .flatMap(isAvailable -> {
 
-    // Upgraded creation method incorporating the cross-service RestClient check
-    public Order createOrder(Order order) {
-        System.out.println("OrderService invoking RestClient network hop for product: " + order.getProductId());
+                    // Fail-Fast: If it's not available, stop the pipeline right here
+                    if (!isAvailable) {
+                        return Mono.just("Order Rejected: Initial availability check failed.");
+                    }
 
-        // 1. Fire the outbound network check to product-service (port 8011)
-        boolean isAvailable = productClient.checkProductAvailability(order.getProductId());
+                    // STEP 2: If available, fetch rich details to get pricing and warehouse location
+                    return productClient.checkProductDetailsAsync(productId)
+                            .flatMap(productDetails -> {
 
-        // 2. Evaluate response envelope
-        if (isAvailable) {
-            order.setOrderDate(LocalDateTime.now()); // Sets your live timestamp
-            order.setStatus("PENDING");
-            return orderRepository.save(order);      // Persists cleanly to MongoDB container
-        } else {
-            System.err.println("Order validation failed in service layer: " + order.getProductId() + " is out of stock.");
-            return null; // Signals controller that the transaction failed validation rules
-        }
+                                // Double check availability flag inside the rich payload
+                                if (!productDetails.isAvailable()) {
+                                    return Mono.just("Order Rejected: Product became unavailable during processing.");
+                                }
+
+                                // STEP 3: Execute corporate business rules and math calculations
+                                double totalPrice = productDetails.currentPrice() * quantity;
+
+                                Order order = new Order();
+                                order.setProductId(productId);
+                                order.setQuantity(quantity);
+                                order.setTotalOrderPrice(totalPrice);
+                                order.setStatus("PROCESSING");
+                                order.setWarehouseLocation(productDetails.warehouseLocation());
+
+                                // STEP 4: Persist the entity into MongoDB
+                                orderRepository.save(order);
+
+                                return Mono.just("Order accepted from " + productDetails.warehouseLocation() + ". Total charges: $" + totalPrice);
+                            });
+                });
     }
 }
